@@ -1,0 +1,135 @@
+﻿IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'demoBD')
+BEGIN
+    CREATE DATABASE demoBD;
+END
+GO
+
+USE demoBD;
+GO
+
+CREATE TABLE demoClientes (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Nombre NVARCHAR(100) NOT NULL,
+    ApellidoPaterno NVARCHAR(100) NOT NULL,
+    ApellidoMaterno NVARCHAR(100) NOT NULL,
+	IsDeleted BIT NOT NULL DEFAULT 0,
+);
+
+GO
+
+CREATE TABLE demoDireccion (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Calle NVARCHAR(100) NOT NULL,
+    NumeroInterior NVARCHAR(10),
+    Colonia NVARCHAR(100) NOT NULL,
+    CodigoPostal NVARCHAR(10) NOT NULL,
+    Municipio NVARCHAR(100) NOT NULL,
+    ClienteId INT NOT NULL,
+	IsDeleted BIT NOT NULL DEFAULT 0,
+    FOREIGN KEY (ClienteId) REFERENCES demoClientes(Id)
+);
+GO
+
+
+SELECT *
+FROM demoClientes c
+JOIN demoDireccion d ON c.Id = d.ClienteId
+WHERE c.IsDeleted = 0 AND d.IsDeleted = 0;
+
+--SELECT c.Id, Nombre, ApellidoPaterno, ApellidoMaterno, Calle, NumeroInterior, Colonia, CodigoPostal, Municipio            
+--FROM demoClientes c
+--JOIN demoDireccion d ON c.Id = d.ClienteId
+--WHERE c.IsDeleted = 0 AND d.IsDeleted = 0;
+
+CREATE OR ALTER PROCEDURE AltaCliente(
+    @Nombre NVARCHAR(100),
+    @ApellidoPaterno NVARCHAR(100),
+    @ApellidoMaterno NVARCHAR(100),
+    @Calle NVARCHAR(100),
+    @NumeroInterior NVARCHAR(10),
+    @Colonia NVARCHAR(100),
+    @CodigoPostal NVARCHAR(10),
+    @Municipio NVARCHAR(100),
+    @Mensaje NVARCHAR(50) OUTPUT
+	)
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION;
+			INSERT INTO demoClientes (Nombre, ApellidoPaterno, ApellidoMaterno, IsDeleted)
+			VALUES (@Nombre, @ApellidoPaterno, @ApellidoMaterno, 0);
+
+			IF @@ROWCOUNT = 0
+			BEGIN
+				THROW 50000, 'No se pudo insertar el cliente.', 1;
+			END
+			DECLARE @ClienteId INT = SCOPE_IDENTITY();
+
+			INSERT INTO demoDireccion (Calle, NumeroInterior, Colonia, CodigoPostal, Municipio, ClienteId, IsDeleted)
+			VALUES (@Calle, @NumeroInterior, @Colonia, @CodigoPostal, @Municipio, @ClienteId, 0);
+			
+			IF @@ROWCOUNT = 0
+			BEGIN
+				THROW 50001, 'No se pudo insertar la dirección.', 1;
+			END			
+        COMMIT TRANSACTION;
+
+        SET @Mensaje = 'Ok';
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        SET @Mensaje = 'Fail';
+    END CATCH;
+END
+GO
+
+--DECLARE @Resultado NVARCHAR(50);
+--EXEC AltaCliente
+--    @Nombre = 'Pedro', 
+--    @ApellidoPaterno = 'Pascal', 
+--    @ApellidoMaterno = 'Gómez', 
+--    @Calle = 'Av. Principal', 
+--    @NumeroInterior = '101', 
+--    @Colonia = 'Centro', 
+--    @CodigoPostal = '12345', 
+--    @Municipio = 'Ciudad', 
+--    @Mensaje = @Resultado OUTPUT;
+
+--SELECT @Resultado AS Resultado;
+
+
+CREATE OR ALTER PROCEDURE EliminarCliente
+    @ClienteId INT,
+	@Mensaje NVARCHAR(50) OUTPUT
+AS
+BEGIN
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM demoClientes WHERE Id = @ClienteId AND IsDeleted = 0)
+        BEGIN
+            SET @Mensaje = 'Fail: Cliente no encontrado.';
+            RETURN;
+        END	
+        BEGIN TRANSACTION;
+			UPDATE demoDireccion 
+			SET IsDeleted = 1 
+			WHERE ClienteId = @ClienteId;
+
+			UPDATE demoClientes 
+			SET IsDeleted = 1 
+			WHERE Id = @ClienteId;
+        COMMIT TRANSACTION;
+        SET @Mensaje = 'Ok';
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        SET @Mensaje = 'Fail';
+    END CATCH;
+
+    SELECT @Mensaje AS Resultado;
+END
+GO
+
+-- DECLARE @Resultado NVARCHAR(50);
+-- EXEC EliminarCliente @ClienteId = 5, @Mensaje = @Resultado OUTPUT;
+-- SELECT @Resultado AS Resultado;
+
